@@ -25,8 +25,8 @@ class envSen():
     
     
         self.debug = False
-        self.tacTime = 10. # seconds
-        
+        self.tacTime = 2. # seconds
+        self.dbEntryLimit = 200 # DB entry limit
         
         self.var_gpsFix = None
         self.var_IP = None
@@ -39,7 +39,7 @@ class envSen():
     def initGPS(self):
         
         try:
-            gps_uart = serial.Serial("/dev/tty1", baudrate=9600, timeout=int(self.tacTime) + 5)
+            gps_uart = serial.Serial("/dev/tty", baudrate=9600, timeout=int(self.tacTime) + 5)
             self.bt_ser = serial.Serial()
 
             # Create a GPS module instance.
@@ -155,7 +155,7 @@ class envSen():
             # Alternatively load a TTF font.  Make sure the .ttf font file is in the
             # same directory as the python script!
             # Some other nice fonts to try: http://www.dafont.com/bitmap.php
-            self.font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+            self.font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
             
             return True
             
@@ -163,13 +163,23 @@ class envSen():
             return False
 
     def initDB(self):
+    
+        try: 
 
-        # Creating Tiny DB
-        current_datetime = datetime.now()
-        print("Current date & time : ", current_datetime)
-        str_current_datetime = str(current_datetime)
-        
-        self.db = TinyDB(str_current_datetime.replace(" ", "_")+".json")
+            # Creating Tiny DB
+            current_datetime = datetime.now()
+            print("Current date & time : ", current_datetime)
+            str_current_datetime = str(current_datetime)
+            
+            self.db = TinyDB("logs/"+str_current_datetime.replace(" ", "_")+".json")
+            
+            self.dbEntryNo = 0
+            
+            return True
+            
+        except:
+            return False
+
 
     def printBoth(self,msg):
 
@@ -242,22 +252,26 @@ class envSen():
         
         '''
         
+        try:
         
-        
-        self.gps.update()
-        # Every second print out current location details if there's a fix.
-        self.current = time.monotonic()
-        if self.current - self.last_print >= self.tacTime:
-            self.last_print = self.current
-            if not self.gps.has_fix:
-                # Try again if we don't have a fix yet.
-                printStat = self.printBoth("Waiting for fix...")
-                return False
-                
+            self.gps.update()
+            # Every second print out current location details if there's a fix.
+            self.current = time.monotonic()
+            if self.current - self.last_print >= self.tacTime:
+                self.last_print = self.current
+                if not self.gps.has_fix:
+                    # Try again if we don't have a fix yet.
+                    printStat = self.printBoth("Waiting for fix...")
+                    return False
+                    
 
-            # We have a fix! (gps.has_fix is true)
-            self.printGPS()
-            return True
+                # We have a fix! (gps.has_fix is true)
+                self.printGPS()
+                return True
+
+        except:
+            self.var_gpsFix = "GPS Error"
+            return False
 
     def printGPS(self):
 
@@ -328,7 +342,7 @@ class envSen():
             return True
             
         except:
-                    
+
             return False
             
 
@@ -337,37 +351,59 @@ class envSen():
     
         # Draw a black filled box to clear the image.
         self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)
-    
-        vars2disp = { 'Time': self.gps.timestamp_utc,
-                      'IP': self.var_IP[:-1],
-                      'Temp': self.bme688_sensor.temperature,
-                      'Humidity': self.bme688_sensor.humidity,
-                      'Pressure': self.bme688_sensor.pressure,
-                      'Altitude': self.bme688_sensor.altitude,
-                      'GPS-Fix': self.var_gpsFix,
-                      'Latitude': self.gps.latitude,
-                      'Longitude': self.gps.longitude
-        
-        }
         
         y = self.top
         x = self.x
-        for key in vars2disp:
+        for key in self.vars2disp:
         
-            dispString = f"{key}: {vars2disp[key]}"
-        
+            dispString = f"{key}: {self.vars2disp[key]}"
             self.draw.text((x,y), dispString, font = self.font, fill="#FFFFFF")
-            self.printBoth(dispString)
-            
             y += self.font.getsize(dispString)[1]
-            
-        self.printBoth("\n")
-        self.disp.image(self.image,self.rotation)
+        self.disp.image(self.image, self.rotation)
+
         
-        self.db.insert(vars2disp)
+
+    def writeScreenDB(self):
+        for key in self.vars2disp:
+            dispString = f"{key}: {self.vars2disp[key]}"
+            self.printBoth(dispString)
+        
+        self.printBoth("\n")        
+        self.dbEntryNo = self.db.insert(self.vars2disp)
         
         time.sleep(self.tacTime)
+        
+        
+    def setVars(self):
+        self.vars2disp = { 'Time': self.gps.timestamp_utc,
+                            'IP': self.var_IP[:-1],
+                            'Temp': self.bme688_sensor.temperature,
+                            'Humidity': self.bme688_sensor.humidity,
+                            'Pressure': self.bme688_sensor.pressure,
+                            'Altitude': self.bme688_sensor.altitude,
+                            'GPS-Fix': self.var_gpsFix,
+                            'Latitude': self.gps.latitude,
+                            'Longitude': self.gps.longitude,
+                            # 'Entry': self.dbEntryNo,
+        
+        }
 
+    def updateErrorOnScreen(self,e):
+    
+        # Draw a black filled box to clear the image.
+        self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)
+        
+        y = self.top
+        x = self.x
+        
+        self.draw.text((x,y), "***********************", font = self.font, fill="#FFFFFF")
+        y += self.font.getsize("******")[1]
+        self.draw.text((x,y), e, font = self.font, fill="#FFFFFF")
+        y += self.font.getsize("******")[1]
+        self.draw.text((x,y), "***********************", font = self.font, fill="#FFFFFF")
+        y += self.font.getsize("******")[1]
+        
+        self.disp.image(self.image, self.rotation)
 
 def main():
 
@@ -380,21 +416,41 @@ def main():
     
     
     print(f'GPS Stat: {gpsStat}')
-    print(f'Disp Stat: {dispStat}')
+    # print(f'Disp Stat: {dispStat}')
     print(f'BME Stat: {bmeStat}')
     print(f'DB Stat: {dbStat}')
 
     while True:
         
-        # if sensorInstance.getGPSupdate():
-            # sensorInstance.printGPS()
+#        try:
+        
+        if sensorInstance.getGPSupdate():
+            sensorInstance.printGPS()
+            
+        # # re-initiate the GPS incase of error due to startup serial coms issue
+        # if sensorInstance.var_gpsFix == "GPS Error":
+            # gpsStat = sensorInstance.initGPS()
             
         sensorInstance.getSysParams()
+        
+        sensorInstance.setVars()
+        
         sensorInstance.updateScreen()
+        sensorInstance.writeScreenDB()
+        
+        if sensorInstance.dbEntryNo == sensorInstance.dbEntryLimit:
+            dbStat = sensorInstance.initDB()
+                
+#        except Exception as e:
+#            sensorInstance.updateErrorOnScreen('Borked!!')
+#            break
+#            sensorInstance.updateErrorOnScreen('Not Exiting!!')
 
 
 if __name__ == "__main__":
     print('**************** STARTING PROGRAM AS MAIN FILE!!!')
 
+    # Comment to stop CRON job
+    
     main()
 
