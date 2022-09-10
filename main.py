@@ -18,6 +18,9 @@ import serial
 from tinydb import TinyDB, Query
 from datetime import datetime
 
+import logging
+
+logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
 
 class envSen():
 
@@ -39,7 +42,7 @@ class envSen():
     def initGPS(self):
         
         try:
-            gps_uart = serial.Serial("/dev/tty", baudrate=9600, timeout=int(self.tacTime) + 5)
+            gps_uart = serial.Serial("/dev/ttyUSB0", baudrate=9600, timeout=int(self.tacTime) + 5)
             self.bt_ser = serial.Serial()
 
             # Create a GPS module instance.
@@ -80,7 +83,8 @@ class envSen():
             
             return True
             
-        except:
+        except Exception as e:
+            logging.critical(e)
             return False
 
 
@@ -427,7 +431,7 @@ def main():
         if sensorInstance.getGPSupdate():
             sensorInstance.printGPS()
             
-        # # re-initiate the GPS incase of error due to startup serial coms issue
+         # # re-initiate the GPS incase of error due to startup serial coms issue
         # if sensorInstance.var_gpsFix == "GPS Error":
             # gpsStat = sensorInstance.initGPS()
             
