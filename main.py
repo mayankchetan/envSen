@@ -13,6 +13,8 @@ from adafruit_rgb_display import st7789
 
 import adafruit_bme680
 
+import sys
+
 # for a computer, use the pyserial library for uart access
 import serial
 from tinydb import TinyDB, Query
@@ -20,9 +22,18 @@ from datetime import datetime
 
 import logging
 
+# Input pins:
+button_A = DigitalInOut(board.D5)
+button_A.direction = Direction.INPUT
+
+if not button_A.value:  # pressed when start
+    print("MANUAL EXIT!!!!")
+    sys.exit()
+
 temp5 = str(datetime.now()).replace(" ", "_")+".log"
 
 logging.basicConfig(filename='logs/logFile_'+temp5, encoding='utf-8', level=logging.DEBUG)
+
 
 class envSen():
 
