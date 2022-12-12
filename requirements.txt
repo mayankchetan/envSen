@@ -1,0 +1,8 @@
+Adafruit_Blinka>=8.2.2
+adafruit_circuitpython_bme680>=3.4.10
+adafruit_circuitpython_gps>=3.10.4
+adafruit_circuitpython_rgb_display>=3.10.19
+board>=1.0
+Pillow>=9.2.0
+pyserial>=3.5
+tinydb>=4.7.0

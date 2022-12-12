@@ -20,7 +20,9 @@ from datetime import datetime
 
 import logging
 
-logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
+temp5 = str(datetime.now()).replace(" ", "_")+".log"
+
+logging.basicConfig(filename='logs/logFile_'+temp5, encoding='utf-8', level=logging.DEBUG)
 
 class envSen():
 
@@ -28,8 +30,10 @@ class envSen():
     
     
         self.debug = False
-        self.tacTime = 2. # seconds
-        self.dbEntryLimit = 200 # DB entry limit
+        self.tacTime = 20. # seconds
+        self.dbEntryLimit = 1000 # DB entry limit
+        
+        self.bme688_temp_offset = -2.5
         
         self.var_gpsFix = None
         self.var_IP = None
@@ -99,7 +103,8 @@ class envSen():
             
             return True
             
-        except:
+        except Exception as e:
+            logging.critical(e)
             return False
 
     def initDisplay(self):
@@ -159,11 +164,12 @@ class envSen():
             # Alternatively load a TTF font.  Make sure the .ttf font file is in the
             # same directory as the python script!
             # Some other nice fonts to try: http://www.dafont.com/bitmap.php
-            self.font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
+            self.font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
             
             return True
             
-        except:
+        except Exception as e:
+            logging.critical(e)
             return False
 
     def initDB(self):
@@ -181,18 +187,21 @@ class envSen():
             
             return True
             
-        except:
+        except Exception as e:
+            logging.critical(e)
             return False
 
 
     def printBoth(self,msg):
 
-        print(msg)
+        if self.debug:
+            print(msg)
+            
         msg = msg + "\n"
         
         
         try:
-            self.bt_ser.port = '/dev/rfcomm1'
+            self.bt_ser.port = '/dev/rfcomm0'
             self.bt_ser.open()# open serial port
             self.bt_ser.write(msg.encode('UTF-8'))
             self.bt_ser.close()
@@ -204,7 +213,8 @@ class envSen():
             if self.debug:
         
                 print("no Bluetooth device found")
-            
+                logging.critical(e)
+                
             return False
             
 
@@ -266,14 +276,15 @@ class envSen():
                 if not self.gps.has_fix:
                     # Try again if we don't have a fix yet.
                     printStat = self.printBoth("Waiting for fix...")
+                    self.var_gpsFix = False
                     return False
-                    
-
-                # We have a fix! (gps.has_fix is true)
-                self.printGPS()
+                
+                self.var_gpsFix = True
                 return True
 
-        except:
+        except Exception as e:
+            logging.critical(e)
+        
             self.var_gpsFix = "GPS Error"
             return False
 
@@ -324,6 +335,7 @@ class envSen():
         if self.gps.height_geoid is not None:
             self.printBoth("Height geoid: {} meters".format(self.gps.height_geoid))
             
+        self.printBoth("=" * 40)  # Print a separator line.
 
 
     def getSysParams(self):
@@ -345,7 +357,8 @@ class envSen():
             
             return True
             
-        except:
+        except Exception as e:
+            logging.critical(e)
 
             return False
             
@@ -360,7 +373,11 @@ class envSen():
         x = self.x
         for key in self.vars2disp:
         
-            dispString = f"{key}: {self.vars2disp[key]}"
+            if isinstance(self.vars2disp[key], float):
+                dispString = f"{key}: {self.vars2disp[key]:.4f}"
+            else:
+                dispString = f"{key}: {self.vars2disp[key]}"
+            
             self.draw.text((x,y), dispString, font = self.font, fill="#FFFFFF")
             y += self.font.getsize(dispString)[1]
         self.disp.image(self.image, self.rotation)
@@ -373,24 +390,60 @@ class envSen():
             self.printBoth(dispString)
         
         self.printBoth("\n")        
-        self.dbEntryNo = self.db.insert(self.vars2disp)
+        self.dbEntryNo = self.db.insert(self.vars2disp | self.vars2log)
         
         time.sleep(self.tacTime)
         
         
     def setVars(self):
-        self.vars2disp = { 'Time': self.gps.timestamp_utc,
+    
+        '''
+        "Fix timestamp: {}/{}/{} {:02}:{:02}:{:02}".format(
+        self.gps.timestamp_utc.tm_mon,  # Grab parts of the time from the
+        self.gps.timestamp_utc.tm_mday,  # struct_time object that holds
+        self.gps.timestamp_utc.tm_year,  # the fix time.  Note you might
+        self.gps.timestamp_utc.tm_hour,  # not get all data like year, day,
+        self.gps.timestamp_utc.tm_min,  # month!
+        self.gps.timestamp_utc.tm_sec,
+        '''
+        
+        if self.gps.timestamp_utc != None:
+    
+            timeStamp = "{}/{}/{} {:02}:{:02}:{:02}".format(
+            self.gps.timestamp_utc.tm_mday,  # Grab parts of the time from the
+            self.gps.timestamp_utc.tm_mon,  # struct_time object that holds
+            self.gps.timestamp_utc.tm_year,  # the fix time.  Note you might
+            self.gps.timestamp_utc.tm_hour,  # not get all data like year, day,
+            self.gps.timestamp_utc.tm_min,  # month!
+            self.gps.timestamp_utc.tm_sec)
+            
+        else:
+        
+            timeStamp = None
+        
+        self.vars2disp = { 'Time': timeStamp,
                             'IP': self.var_IP[:-1],
-                            'Temp': self.bme688_sensor.temperature,
-                            'Humidity': self.bme688_sensor.humidity,
-                            'Pressure': self.bme688_sensor.pressure,
-                            'Altitude': self.bme688_sensor.altitude,
-                            'GPS-Fix': self.var_gpsFix,
-                            'Latitude': self.gps.latitude,
-                            'Longitude': self.gps.longitude,
-                            # 'Entry': self.dbEntryNo,
+                            'Temp    (C)': self.bme688_sensor.temperature + self.bme688_temp_offset,
+                            'Humidity(%)': self.bme688_sensor.humidity,
+                            'Press (mPa)': self.bme688_sensor.pressure,
+                            'Sen-Alt (m)': self.bme688_sensor.altitude,
+                            'senGas(ohm)': self.bme688_sensor.gas,
+                            'GPS-Fix (m)': self.var_gpsFix,
+                            'GPS-Alt (m)': self.gps.altitude_m,
+                            'Latitude   ': self.gps.latitude,
+                            'Longitude  ': self.gps.longitude,
+                            'NoOfSats(#)': self.gps.satellites,
+                            
         
         }
+        
+        self.vars2log = { 'GPSraw': self.gps._raw_sentence,
+                          'temp-Offset': self.bme688_temp_offset,
+                        }
+
+    
+
+
 
     def updateErrorOnScreen(self,e):
     
